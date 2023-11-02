@@ -1,4 +1,5 @@
 ADD_SUBDIRECTORIES(
+    GraphTools
     Import_Tpetra
     InterfacePartitionOfUnity
     InterfaceSets

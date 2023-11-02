@@ -34,7 +34,7 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// Questions? Contact Alexander Heinlein (alexander.heinlein@uni-koeln.de)
+// Questions? Contact Alexander Heinlein (a.heinlein@tudelft.nl)
 //
 // ************************************************************************
 //@HEADER
@@ -175,7 +175,7 @@ namespace FROSch {
 
     template <typename LO,typename GO,typename NO>
     size_t LowerPIDTieBreak<LO,GO,NO>::selectedIndex(GO GID,
-                                                          const vector<pair<int,LO> > & pid_and_lid) const
+                                                     const vector<pair<int,LO> > & pid_and_lid) const
     {
         // Always choose index of pair with smallest pid
         const size_t numLids = pid_and_lid.size();
@@ -1102,6 +1102,37 @@ namespace FROSch {
     RCP<const Map<LO,GO,NO> > MergeMaps(ArrayRCP<RCP<const Map<LO,GO,NO> > > mapVector)
     {
         return MergeMapsNonConst(mapVector).getConst();
+    }
+
+    template <class LO,class GO,class NO>
+    int FindBoundaryElements(RCP<const CrsGraph<LO,GO,NO> > inputGraph,
+                             RCP<const CrsGraph<LO,GO,NO> > &outputGraph)
+    {
+        FROSCH_DETAILTIMER_START(findBoundaryElementsrTime,"FindBoundaryElements");
+
+        RCP<CrsGraph<LO,GO,NO> > tmpGraph = CrsGraphFactory<LO,GO,NO>::Build(inputGraph->getRowMap(),inputGraph->getGlobalMaxNumRowEntries());
+        unsigned counter;
+        for (unsigned i=0; i<inputGraph->getRowMap()->getLocalNumElements(); i++) {
+            ArrayView<const LO> inputColumns;
+            inputGraph->getLocalRowView(i,inputColumns);
+
+            Array<GO> columns(inputColumns.size());
+            counter=0;
+            for (unsigned j = 0; j < inputColumns.size(); j++) {
+                GO inputColumnGlobal = inputGraph->getColMap()->getGlobalElement(inputColumns[j]);
+                LO inputColumnLocal = inputGraph->getRowMap()->getLocalElement(inputColumnGlobal);
+                if (inputColumnLocal==-1) {
+                    columns.at(counter) = inputColumnGlobal;
+                    counter++;
+                }
+            }
+            columns.resize(counter);
+            tmpGraph->insertGlobalIndices(inputGraph->getRowMap()->getGlobalElement(i),columns());
+        }
+        tmpGraph->fillComplete(inputGraph->getDomainMap(),inputGraph->getRangeMap());
+        outputGraph = tmpGraph.getConst();
+
+        return 0;
     }
 
     template <class LO,class GO,class NO>

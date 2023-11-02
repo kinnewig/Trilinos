@@ -34,7 +34,7 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// Questions? Contact Alexander Heinlein (alexander.heinlein@uni-koeln.de)
+// Questions? Contact Alexander Heinlein (a.heinlein@tudelft.nl)
 //
 // ************************************************************************
 //@HEADER
@@ -272,6 +272,10 @@ namespace FROSch {
 
     template <class LO,class GO,class NO>
     RCP<const Map<LO,GO,NO> > MergeMaps(ArrayRCP<RCP<const Map<LO,GO,NO> > > mapVector);
+
+    template <class LO,class GO,class NO>
+    int FindBoundaryElements(RCP<const CrsGraph<LO,GO,NO> > inputGraph,
+                             RCP<const CrsGraph<LO,GO,NO> > &outputGraph);
 
     template <class LO,class GO,class NO>
     int BuildDofMaps(const RCP<const Map<LO,GO,NO> > map,
