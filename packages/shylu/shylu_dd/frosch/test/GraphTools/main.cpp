@@ -183,7 +183,8 @@ int main(int argc, char *argv[])
 
     RCP<const CrsGraph<LO,GO,NO> > OverlappingDualGraph;
     RCP<const Map<LO,GO,NO> > OverlappingMap = DualGraph->getColMap();
-    ExtendOverlapByOneLayer<LO,GO,NO>(DualGraph,OverlappingMap,OverlappingDualGraph,OverlappingMap);
+    RCP<const Map<LO,GO,NO> > OverlappingMap2;
+    ExtendOverlapByOneLayer<LO,GO,NO>(DualGraph,OverlappingMap,OverlappingDualGraph,OverlappingMap2);
 
     OverlappingDualGraph->describe(*fancy,VERB_EXTREME);
 
@@ -192,6 +193,28 @@ int main(int argc, char *argv[])
 
     OverlappingBoundaryElementsGraph->describe(*fancy,VERB_EXTREME);
 
+    // Define MultiVectors
+    int NumColumns = 1;
+    RCP<MultiVector<double,LO,GO,NO> > DoubleVectorNO = MultiVectorFactory<double,LO,GO,NO>::Build(RowMap,NumColumns);
+    DoubleVectorNO->putScalar(double(CommWorld->getRank()));
+    RCP<MultiVector<int,LO,GO,NO> > IntVectorNO = MultiVectorFactory<int,LO,GO,NO>::Build(RowMap,NumColumns);
+    IntVectorNO->putScalar(CommWorld->getRank());
+
+    DoubleVectorNO->describe(*fancy,VERB_EXTREME);
+    IntVectorNO->describe(*fancy,VERB_EXTREME);
+
+    // Communicate MultiVectors
+    RCP<MultiVector<double,LO,GO,NO> > DoubleVectorO = MultiVectorFactory<double,LO,GO,NO>::Build(OverlappingMap,NumColumns);
+    RCP<MultiVector<int,LO,GO,NO> > IntVectorO = MultiVectorFactory<int,LO,GO,NO>::Build(OverlappingMap,NumColumns);
+
+    RCP<Import<LO,GO,NO> > importer = ImportFactory<LO,GO,NO>::Build(RowMap,OverlappingMap);
+    DoubleVectorO->doImport(*DoubleVectorNO,*importer,INSERT);
+    IntVectorO->doImport(*IntVectorNO,*importer,INSERT);
+
+    DoubleVectorO->describe(*fancy,VERB_EXTREME);
+    IntVectorO->describe(*fancy,VERB_EXTREME);
+
+    // Show Timer
     CommWorld->barrier();
     stackedTimer->stop("Overlap Test");
     StackedTimer::OutputOptions options;
