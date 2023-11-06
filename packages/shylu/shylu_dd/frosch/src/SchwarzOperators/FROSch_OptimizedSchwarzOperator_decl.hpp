@@ -9,6 +9,13 @@ namespace FROSch {
     using namespace Teuchos;
     using namespace Xpetra;
 
+    /**
+     *
+     * @tparam SC
+     * @tparam LO
+     * @tparam GO
+     * @tparam NO
+     */
     template <class SC = double,
               class LO = int,
               class GO = DefaultGlobalOrdinal,
@@ -17,7 +24,10 @@ namespace FROSch {
 
     protected:
 
+        using XLongLongMultiVector              = Xpetra::MultiVector<long long,LO,GO,NO>; // TODO?
+        using XLongLongMultiVectorPtr           = RCP<XLongLongMultiVector>;
         using XMultiVector                      = typename SchwarzOperator<SC,LO,GO,NO>::XMultiVector;
+        using XMultiVectorPtr                   = typename SchwarzOperator<SC,LO,GO,NO>::XMultiVectorPtr;
 
         using XMatrix                           = typename SchwarzOperator<SC,LO,GO,NO>::XMatrix;
         using XMatrixPtr                        = typename SchwarzOperator<SC,LO,GO,NO>::XMatrixPtr;
@@ -27,24 +37,42 @@ namespace FROSch {
         using GraphPtr                          = typename SchwarzOperator<SC,LO,GO,NO>::GraphPtr;
         using ConstXCrsGraphPtr                 = typename SchwarzOperator<SC,LO,GO,NO>::ConstXCrsGraphPtr;
 
+        using XMap                              = typename SchwarzOperator<SC,LO,GO,NO>::XMap;
+        using XMapPtr                           = typename SchwarzOperator<SC,LO,GO,NO>::XMapPtr;
+
         using ParameterListPtr                  = typename SchwarzOperator<SC,LO,GO,NO>::ParameterListPtr;
         using CommPtr                           = typename SchwarzOperator<SC,LO,GO,NO>::CommPtr;
 
     public:
-    
+
         /**
-         *  Constructor from a Teuchos::RCP<Xpetra::CrsGraph<SC,LO,GO,NO>>
-         *  where the graph contains the dual representation of the matrix
+         *  Constructor from the dual graph and the local to global vertex map
          */
-        OptimizedSchwarzOperator(GraphPtr graph);
-    
+        OptimizedSchwarzOperator(GraphPtr graph, XMapPtr map);
+
         int initialize();
+
+        /**
+         * TODO: improve this description
+         * @param cell_list Description of the cell data.
+         * @param vertex_list Description of the vertex list.
+         */
+        int initialize(
+            XLongLongMultiVectorPtr &cell_data,
+            XMultiVectorPtr &vertex_list,
+            long long numGlobalVertices);
 
         GraphPtr getOverlappingGraph();
 
-        void setNeumanMatrix(ConstXMatrixPtr);
+        /**
+         *  Set a value to the NeumannMatrix.
+         */
+        void setNeumannMatrix(XMatrixPtr);
 
-        void setMassMatrix(ConstXMatrixPtr);
+        /**
+         *  Set a value RobinMatrix.
+         */
+        void setRobinMatrix(XMatrixPtr);
 
         int compute();
 
@@ -62,12 +90,36 @@ namespace FROSch {
         string description() const;
 
     protected:
-      
+
         /**
-         *  Store a Teuchos::RCP<Xpetra::CrsGraph<SC,LO,GO,NO>> 
-         *  which contains the dual representation of the matrix
-         */  
-        GraphPtr Graph_;
+         *  Store a RCP<Xpetra::CrsGraph<SC,LO,GO,NO>>
+         *  which contains the dual graph, i.e.
+         *  if there is an entry in (row i, column j)
+         *  element i and element j are neighbors.
+         */
+        GraphPtr DualGraph_;
+
+        /**
+         * The local to global map for the vertices.
+         * local_index = VertexMap_.getLocalElement(global_index);
+         */
+         XMapPtr VertexMap_;
+
+        /**
+         *  The Neumann matrix, where each rank only
+         *  holds the Neumann matrix, that belongs to its
+         *  subdomain.
+         */
+         XMatrixPtr NeumannMatrix_;
+
+         /**
+          * The Robin matrix describes the Robin boundary.
+          * Therefore this matrix has only entries, which
+          * are correlating to boundary elements.
+          * Each rank holds only the Robin matrix, that belongs
+          * to its subdomain.
+          */
+          XMatrixPtr RobinMatrix_;
 
     }; //class OptimizedSchwarzOperator
 
