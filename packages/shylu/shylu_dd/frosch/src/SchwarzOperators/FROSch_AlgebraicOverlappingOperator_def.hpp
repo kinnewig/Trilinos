@@ -69,8 +69,9 @@ namespace FROSch {
     }
 
     template <class SC,class LO,class GO,class NO>
-    int AlgebraicOverlappingOperator<SC,LO,GO,NO>::initialize(int overlap,
-                                                              ConstXMapPtr repeatedMap)
+    int
+    AlgebraicOverlappingOperator<SC,LO,GO,NO>::initialize(int overlap,
+                                                          ConstXMapPtr repeatedMap)
     {
         FROSCH_TIMER_START_LEVELID(initializeTime,"AlgebraicOverlappingOperator::initialize");
 

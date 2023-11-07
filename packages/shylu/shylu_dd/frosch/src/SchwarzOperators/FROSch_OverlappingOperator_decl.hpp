@@ -84,6 +84,8 @@ namespace FROSch {
 
     public:
 
+        OverlappingOperator(CommPtr comm);
+
         OverlappingOperator(ConstXMatrixPtr k,
                             ParameterListPtr parameterList);
 
