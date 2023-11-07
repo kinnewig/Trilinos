@@ -39,6 +39,7 @@ namespace FROSch {
 
         using XMap                              = typename SchwarzOperator<SC,LO,GO,NO>::XMap;
         using XMapPtr                           = typename SchwarzOperator<SC,LO,GO,NO>::XMapPtr;
+        using ConstXMapPtr                      = typename SchwarzOperator<SC,LO,GO,NO>::ConstXMapPtr;
 
         using ParameterListPtr                  = typename SchwarzOperator<SC,LO,GO,NO>::ParameterListPtr;
         using CommPtr                           = typename SchwarzOperator<SC,LO,GO,NO>::CommPtr;
@@ -55,7 +56,7 @@ namespace FROSch {
          */
         OptimizedSchwarzOperator(ConstXMatrixPtr  k,
                                  ParameterListPtr parameterList,
-                                 GraphPtr         dualGraph)
+                                 GraphPtr         dualGraph);
 
         /**
          * TODO: improve this description

@@ -129,6 +129,7 @@ namespace FROSch {
                 data[j] = overlappingNodeMap->getLocalElement(data[j]);
             }
         }
+        return 0;
     }
 
     template <class SC, class LO, class GO, class NO>
@@ -148,19 +149,19 @@ namespace FROSch {
 
     template <class SC, class LO, class GO, class NO>
     int
-    OptimizedSchwarzOperator<SC, LO, GO, NO>::compute(ConstXMapPtr OverlappingDOFMap,
-                                                      ConstXMatrixPtr NeumannMatrix,
-                                                      ConstXMatrixPtr RobinMatrix)
+    OptimizedSchwarzOperator<SC, LO, GO, NO>::compute(ConstXMapPtr      overlappinMap,
+                                                      ConstXMatrixPtr   neumannMatrix,
+                                                      ConstXMatrixPtr   robinMatrix)
     {
         FROSCH_TIMER_START_LEVELID(computeTime,"OptimizedSchwarzOperator::compute");
 
-        this->OverlappingMap = OverlappingMap
+        this->OverlappingMap = overlappinMap;
 
         // Compute
-        XMatrix overlappingMatrix = MatrixFactory<SC,LO,GO,NO>::BuildCopy(NeumannMatrix);
-        TwoMatrixAdd(RobinMatrix,false,this->ParameterList_->get("Robin BC: alpha",1.0),overlappingMatrix);
+        XMatrix overlappingMatrix = MatrixFactory<SC,LO,GO,NO>::BuildCopy(neumannMatrix);
+        TwoMatrixAdd(robinMatrix,false,this->ParameterList_->get("Robin BC: alpha",1.0),overlappingMatrix);
 
-        computeOverlappingOperator();
+        return this->computeOverlappingOperator();
     }
 
 
@@ -246,48 +247,47 @@ namespace FROSch {
                 << " |";
             }
         }
-    }
 
-    // Adding Layers of Elements to the overlapping subdomains
-    ConstXCrsGraphPtr overlappingGraph = this->OverlappingMatrix_->getCrsGraph();
-    for (int i=1; i<overlap; i++) {
+        // Adding Layers of Elements to the overlapping subdomains
+        for (int i=1; i<overlap; i++) {
             ExtendOverlapByOneLayer(this->OverlappingGraph_,this->OverlappingElementMap_,this->OverlappingGraph_,this->OverlappingElementMap_);
+
+            if (verbosity==All) {
+                FROSCH_DETAILTIMER_START_LEVELID(printStatisticsTime,"print statistics");
+                local = (LO) max((LO) this->OverlappingElementMap_->getLocalNumElements(),(LO) 0);
+                reduceAll(*this->MpiComm_,REDUCE_SUM,GO(local),ptr(&sum));
+                avg = max(sum/double(this->MpiComm_->getSize()),0.0);
+                reduceAll(*this->MpiComm_,REDUCE_MIN,local,ptr(&minVal));
+                reduceAll(*this->MpiComm_,REDUCE_MAX,local,ptr(&maxVal));
+
+                if (this->Verbose_) {
+                    cout
+                    << "\n" << setw(FROSCH_OUTPUT_INDENT) << " "
+                    << "| " << left << "Layer " << setw(14) << i+1 << right
+                    << " | " << setw(10) << global
+                    << " | " << setw(10) << setprecision(5) << avg
+                    << " | " << setw(10) << minVal
+                    << " | " << setw(10) << maxVal
+                    << " | " << setw(10) << sum
+                    << " |";
+                }
+            }
         }
+
         if (verbosity==All) {
             FROSCH_DETAILTIMER_START_LEVELID(printStatisticsTime,"print statistics");
-            local = (LO) max((LO) this->OverlappingElementMap_->getLocalNumElements(),(LO) 0);
-            reduceAll(*this->MpiComm_,REDUCE_SUM,GO(local),ptr(&sum));
-            avg = max(sum/double(this->MpiComm_->getSize()),0.0);
-            reduceAll(*this->MpiComm_,REDUCE_MIN,local,ptr(&minVal));
-            reduceAll(*this->MpiComm_,REDUCE_MAX,local,ptr(&maxVal));
-
             if (this->Verbose_) {
                 cout
                 << "\n" << setw(FROSCH_OUTPUT_INDENT) << " "
-                << "| " << left << "Layer " << setw(14) << i+1 << right
-                << " | " << setw(10) << global
-                << " | " << setw(10) << setprecision(5) << avg
-                << " | " << setw(10) << minVal
-                << " | " << setw(10) << maxVal
-                << " | " << setw(10) << sum
-                << " |";
+                << setw(89) << "-----------------------------------------------------------------------------------------"
+                << endl;
             }
         }
-    }
 
-    if (verbosity==All) {
-        FROSCH_DETAILTIMER_START_LEVELID(printStatisticsTime,"print statistics");
-        if (this->Verbose_) {
-            cout
-            << "\n" << setw(FROSCH_OUTPUT_INDENT) << " "
-            << setw(89) << "-----------------------------------------------------------------------------------------"
-            << endl;
+        // AH 08/28/2019 TODO: It seems that ExtendOverlapByOneLayer_Old is currently the fastest method because the map is sorted. This seems to be better for the direct solver. (At least Klu)
+        if (this->ParameterList_->get("Sort Overlapping Map",true)) {
+            this->OverlappingElementMap_ = SortMapByGlobalIndex(this->OverlappingElementMap_);
         }
-    }
-
-    // AH 08/28/2019 TODO: It seems that ExtendOverlapByOneLayer_Old is currently the fastest method because the map is sorted. This seems to be better for the direct solver. (At least Klu)
-    if (this->ParameterList_->get("Sort Overlapping Map",true)) {
-        this->OverlappingElementMap_ = SortMapByGlobalIndex(this->OverlappingElementMap_);
     }
 
 } // namespace FROSch
