@@ -48,52 +48,68 @@ namespace FROSch {
         /**
          *  Constructor from the dual graph and the local to global vertex map
          */
-        OptimizedSchwarzOperator(GraphPtr graph,
-                                 XMapPtr map);
+        OptimizedSchwarzOperator(CommPtr comm);
+
+        /**
+         *  Constructor from the dual graph and the local to global vertex map
+         */
+        OptimizedSchwarzOperator(ConstXMatrixPtr  k,
+                                 ParameterListPtr parameterList,
+                                 GraphPtr         dualGraph)
 
         /**
          * TODO: improve this description
          */
         int initialize();
 
+        /**
+         * TODO: improve this description
+         */
+        int initialize(int overlap);
+
        /**
         * TODO: improve this description
         * @param cell_list Description of the cell data.
         * @param vertex_list Description of the vertex list.
         */
-        int communicateTriangulation(XLongLongMultiVectorPtr ElementList,
-                                     XMultiVectorPtr         NodeList,
-                                     XLongLongMultiVectorPtr &ElementListOverlapping,
-                                     XMultiVectorPtr         &NodeListOverlapping);
+        int communicateOverlappingTriangulation(XLongLongMultiVectorPtr elementList,
+                                                XMultiVectorPtr         nodeList,
+                                                XLongLongMultiVectorPtr &elementListOverlapping,
+                                                XMultiVectorPtr         &nodeListOverlapping);
 
+       /**
+        * TODO: improve this description
+        */
         GraphPtr getOverlappingGraph();
-
-        /**
-         *  Set a value to the NeumannMatrix.
-         */
-        void setNeumannMatrix(XMatrixPtr NeumannMatrix);
 
         /**
          *  Set a value RobinMatrix.
          */
-        void setRobinMatrix(XMatrixPtr RobinMatrix);
-
         int compute();
+
+        /**
+         *  Set a value RobinMatrix.
+         */
+        int compute(ConstXMapPtr    overlappingMap,
+                    ConstXMatrixPtr neumannMatrix,
+                    ConstXMatrixPtr robinMatrix);
 
 
         void apply(const XMultiVector &x,
-                   XMultiVector &y,
-                   bool usePreconditionerOnly,
-                   ETransp mode=NO_TRANS,
-                   SC alpha=ScalarTraits<SC>::one(),
-                   SC beta=ScalarTraits<SC>::zero()) const;
+                   XMultiVector       &y,
+                   bool               usePreconditionerOnly,
+                   ETransp            mode=NO_TRANS,
+                   SC                 alpha=ScalarTraits<SC>::one(),
+                   SC                 beta=ScalarTraits<SC>::zero()) const;
 
-        void describe(FancyOStream &out,
+        void describe(FancyOStream          &out,
                       const EVerbosityLevel verbLevel=Describable::verbLevel_default) const;
 
         string description() const;
 
     protected:
+
+        int buildOverlappingGraph(int overlap);
 
         /**
          *  Store a RCP<Xpetra::CrsGraph<SC,LO,GO,NO>>
@@ -104,26 +120,30 @@ namespace FROSch {
         GraphPtr DualGraph_;
 
         /**
-         * The local to global map for the vertices.
-         * local_index = VertexMap_.getLocalElement(global_index);
+         * Todo
          */
-         XMapPtr VertexMap_;
+        XMapPtr Map_;
+
+        /**
+         *
+         */
+        XMapPtr OverlappingElementMap_;
 
         /**
          *  The Neumann matrix, where each rank only
          *  holds the Neumann matrix, that belongs to its
          *  subdomain.
          */
-         ConstXMatrixPtr NeumannMatrix_;
+        ConstXMatrixPtr NeumannMatrix_;
 
-         /**
-          * The Robin matrix describes the Robin boundary.
-          * Therefore this matrix has only entries, which
-          * are correlating to boundary elements.
-          * Each rank holds only the Robin matrix, that belongs
-          * to its subdomain.
-          */
-          ConstXMatrixPtr RobinMatrix_;
+        /**
+         * The Robin matrix describes the Robin boundary.
+         * Therefore this matrix has only entries, which
+         * are correlating to boundary elements.
+         * Each rank holds only the Robin matrix, that belongs
+         * to its subdomain.
+         */
+        ConstXMatrixPtr RobinMatrix_;
 
     }; //class OptimizedSchwarzOperator
 
