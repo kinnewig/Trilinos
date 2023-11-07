@@ -116,7 +116,7 @@ namespace FROSch {
         XMapPtr overlappingNodeMap = Xpetra::MapFactory<LO,GO,NO>::Build(DualGraph_->getMap()->lib(), DualGraph_->getMap()->getMaxGlobalIndex()+1, array(), 0, DualGraph_->getMap()->getComm());
 
         // Communicate the vertex list
-        nodeListOverlapping = Xpetra::MultiVectorFactory<double,LO,GO,NO>::Build(overlappingNodeMap,nodeList->getNumVectors); //TODO
+        nodeListOverlapping = Xpetra::MultiVectorFactory<double,LO,GO,NO>::Build(overlappingNodeMap,nodeList->getNumVectors());
         RCP<Xpetra::Import<LO,GO,NO> > vertex_importer = Xpetra::ImportFactory<LO,GO,NO>::Build(nodeList->getMap(), overlappingNodeMap);
         nodeListOverlapping->doImport(*nodeList,*vertex_importer,Xpetra::INSERT);
 
@@ -198,7 +198,7 @@ namespace FROSch {
         // ====================================================================================
 
         this->OverlappingElementMap_ = DualGraph_->getColMap();
-        this->OverlappingGraph_ = DualGraph_->K_;
+        this->OverlappingGraph_ = DualGraph_;
 
         GO global = 0, sum = 0;
         LO local,minVal,maxVal;
@@ -288,6 +288,12 @@ namespace FROSch {
         if (this->ParameterList_->get("Sort Overlapping Map",true)) {
             this->OverlappingElementMap_ = SortMapByGlobalIndex(this->OverlappingElementMap_);
         }
+    }
+
+    // TODO: this function is otherwise only virtual
+    template <class SC,class LO,class GO,class NO>
+    int OptimizedSchwarzOperator<SC,LO,GO,NO>::updateLocalOverlappingMatrices() {
+        return 0;
     }
 
 } // namespace FROSch

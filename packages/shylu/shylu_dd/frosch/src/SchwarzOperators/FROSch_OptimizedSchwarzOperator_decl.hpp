@@ -95,18 +95,13 @@ namespace FROSch {
                     ConstXMatrixPtr neumannMatrix,
                     ConstXMatrixPtr robinMatrix);
 
-
-        void apply(const XMultiVector &x,
-                   XMultiVector       &y,
-                   bool               usePreconditionerOnly,
-                   ETransp            mode=NO_TRANS,
-                   SC                 alpha=ScalarTraits<SC>::one(),
-                   SC                 beta=ScalarTraits<SC>::zero()) const;
-
         void describe(FancyOStream          &out,
                       const EVerbosityLevel verbLevel=Describable::verbLevel_default) const;
 
         string description() const;
+
+        //TODO int needed as the function is only virtual
+        int updateLocalOverlappingMatrices();
 
     protected:
 
@@ -128,7 +123,12 @@ namespace FROSch {
         /**
          *
          */
-        XMapPtr OverlappingElementMap_;
+        ConstXMapPtr OverlappingElementMap_;
+
+        /**
+         *
+         */
+        ConstXCrsGraphPtr OverlappingGraph_;
 
         /**
          *  The Neumann matrix, where each rank only
