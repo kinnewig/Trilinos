@@ -149,7 +149,7 @@ namespace FROSch {
 
     template <class SC, class LO, class GO, class NO>
     int
-    OptimizedSchwarzOperator<SC, LO, GO, NO>::compute(ConstXMapPtr         overlappingMap,
+    OptimizedSchwarzOperator<SC, LO, GO, NO>::compute(ConstXMapPtr      overlappingMap,
                                                       ConstXMatrixPtr   neumannMatrix,
                                                       ConstXMatrixPtr   robinMatrix)
     {
@@ -159,8 +159,10 @@ namespace FROSch {
 
         // Compute
   //    auto out = Teuchos::getFancyOStream (Teuchos::rcpFromRef (std::cout));
-        Teuchos::RCP<XMatrix> overlappingMatrix = MatrixFactory<SC,LO,GO,NO>::BuildCopy(neumannMatrix);
-        MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*robinMatrix,false,this->ParameterList_->get("Robin BC: alpha",1.0), *overlappingMatrix, 1.0);
+        Teuchos::RCP<XMatrix> overlappingMatrix = null; // = MatrixFactory<SC,LO,GO,NO>::BuildCopy(neumannMatrix);
+        // MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*robinMatrix,false,this->ParameterList_->get("Robin BC: alpha",1.0), *overlappingMatrix, 1.0);
+        MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*neumannMatrix,false,1.0,*robinMatrix,false, const SC &beta,overlappingMatrix,null);
+        this->OverlappingMatrix_ = overlappingMatrix.getConst();
 
         return this->computeOverlappingOperator();
     }
