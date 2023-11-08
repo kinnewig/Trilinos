@@ -157,11 +157,15 @@ namespace FROSch {
 
         this->OverlappingMap_ = overlappingMap;
 
+        this->initializeOverlappingOperator();
+
         // Compute
-  //    auto out = Teuchos::getFancyOStream (Teuchos::rcpFromRef (std::cout));
-        Teuchos::RCP<XMatrix> overlappingMatrix = null; // = MatrixFactory<SC,LO,GO,NO>::BuildCopy(neumannMatrix);
+        auto out = Teuchos::getFancyOStream (Teuchos::rcpFromRef (std::cout));
+        //Teuchos::RCP<XMatrix> overlappingMatrix = null; // = MatrixFactory<SC,LO,GO,NO>::BuildCopy(neumannMatrix);
+        Teuchos::RCP<XMatrix> overlappingMatrix = MatrixFactory<SC,LO,GO,NO>::BuildCopy(neumannMatrix);
         // MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*robinMatrix,false,this->ParameterList_->get("Robin BC: alpha",1.0), *overlappingMatrix, 1.0);
-        MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*neumannMatrix,false,1.0,*robinMatrix,false, const SC &beta,overlappingMatrix,null);
+        MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*neumannMatrix,false,1.0,*robinMatrix,false, 1.0,overlappingMatrix, *out);
+        overlappingMatrix->fillComplete();
         this->OverlappingMatrix_ = overlappingMatrix.getConst();
 
         return this->computeOverlappingOperator();
