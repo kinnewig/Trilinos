@@ -99,7 +99,22 @@ namespace FROSch {
 
         long long numLocalElemtents = elementListOverlapping->getLocalLength();
 
-        // extract the new local to global vertex map from ElementList_overlapping
+      //// extract the new local to global dof map from elementListOverlapping
+      //// TODO: use kokkos::views
+      //long long numDofsPerElement = dofsPerNodeList->getNumVectors();
+      //Teuchos::Array<long long> dofsArray(numLocalElemtents * numDofsPerElement);
+      //for (unsigned int i = 0; i < numDofsPerElement; ++i ) {
+      //  auto data = elementListOverlapping->getData(i);
+      //  for (unsigned int j = 0; j < numLocalElemtents; ++j) {
+      //    dofsArray[(j * numDofsPerElement) + i] = data[j];
+      //  }
+      //}
+      //// Since, we just added all global vertex indices from the elementList,
+      //// there are now a lot of duplicates. Let's remove those.
+      //FROSch::sortunique(dofsArray);
+      //this->OverlappingMap_ = Xpetra::MapFactory<LO,GO,NO>::Build(DualGraph_->getMap()->lib(), numDofs, dofsArray(), 0, DualGraph_->getMap()->getComm());
+
+        // extract the new local to global vertex map from elementListOverlapping
         // TODO: use kokkos::views
         Teuchos::Array<long long> array(numLocalElemtents * nodesPerCell);
         for (unsigned int i = 0; i < nodesPerCell; ++i ) {
@@ -155,15 +170,15 @@ namespace FROSch {
     {
         FROSCH_TIMER_START_LEVELID(computeTime,"OptimizedSchwarzOperator::compute");
 
+        // The OverlappingMap_ is constructed in communicateOverlappingTriangulation
         this->OverlappingMap_ = overlappingMap;
 
         this->initializeOverlappingOperator();
 
         // Compute
         auto out = Teuchos::getFancyOStream (Teuchos::rcpFromRef (std::cout));
-        //Teuchos::RCP<XMatrix> overlappingMatrix = null; // = MatrixFactory<SC,LO,GO,NO>::BuildCopy(neumannMatrix);
-        Teuchos::RCP<XMatrix> overlappingMatrix = MatrixFactory<SC,LO,GO,NO>::BuildCopy(neumannMatrix);
-        // MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*robinMatrix,false,this->ParameterList_->get("Robin BC: alpha",1.0), *overlappingMatrix, 1.0);
+        Teuchos::RCP<XMatrix> overlappingMatrix = null;
+
         MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*neumannMatrix,false,1.0,*robinMatrix,false, 1.0,overlappingMatrix, *out);
         overlappingMatrix->fillComplete();
         this->OverlappingMatrix_ = overlappingMatrix.getConst();
