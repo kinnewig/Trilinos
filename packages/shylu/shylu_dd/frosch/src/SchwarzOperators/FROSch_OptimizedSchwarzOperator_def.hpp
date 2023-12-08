@@ -72,7 +72,6 @@ namespace FROSch {
             << setw(89) << "-----------------------------------------------------------------------------------------"
             << endl;
         }
-
         this->buildOverlappingGraph(overlap);
 
         this->IsInitialized_ = true;
@@ -82,10 +81,13 @@ namespace FROSch {
 
     template <class SC, class LO, class GO, class NO>
     int
-    OptimizedSchwarzOperator<SC, LO, GO, NO>::communicateOverlappingTriangulation(XLongLongMultiVectorPtr elementList,
-                                                                                  XMultiVectorPtr         nodeList,
-                                                                                  XLongLongMultiVectorPtr &elementListOverlapping,
-                                                                                  XMultiVectorPtr         &nodeListOverlapping)
+    OptimizedSchwarzOperator<SC, LO, GO, NO>::communicateOverlappingTriangulation(
+      XMultiVectorTemplatePtr<long long>  elementList,
+      XMultiVectorTemplatePtr<int>        elementList2,
+      XMultiVectorPtr                     nodeList,
+      XMultiVectorTemplatePtr<long long> &elementListOverlapping,
+      XMultiVectorTemplatePtr<int>       &elementList2Overlapping,
+      XMultiVectorPtr                    &nodeListOverlapping)
     {
         FROSCH_TIMER_START_LEVELID(initializeTime,"OptimizedSchwarzOperator::communicateTriangulation");
 
@@ -96,6 +98,10 @@ namespace FROSch {
         elementListOverlapping = Xpetra::MultiVectorFactory<long long,LO,GO,NO>::Build(this->OverlappingElementMap_, nodesPerCell);
         Teuchos::RCP<Xpetra::Import<LO,GO,NO>> elementImporter = Xpetra::ImportFactory<LO,GO,NO>::Build(DualGraph_->getRowMap(), this->OverlappingElementMap_);
         elementListOverlapping->doImport(*elementList,*elementImporter,Xpetra::INSERT);
+
+        // Communicate the subcell data
+        elementList2Overlapping = Xpetra::MultiVectorFactory<int,LO,GO,NO>::Build(this->OverlappingElementMap_, nodesPerCell);
+        elementList2Overlapping->doImport(*elementList2,*elementImporter,Xpetra::INSERT);
 
         long long numLocalElemtents = elementListOverlapping->getLocalLength();
 
@@ -127,6 +133,8 @@ namespace FROSch {
         // Since, we just added all global vertex indices from the elementList,
         // there are now a lot of duplicates. Let's remove those.
         FROSch::sortunique(array);
+
+
 
         XMapPtr overlappingNodeMap = Xpetra::MapFactory<LO,GO,NO>::Build(DualGraph_->getMap()->lib(), DualGraph_->getMap()->getMaxGlobalIndex()+1, array(), 0, DualGraph_->getMap()->getComm());
 
@@ -173,7 +181,6 @@ namespace FROSch {
         // The OverlappingMap_ is constructed in communicateOverlappingTriangulation
         this->OverlappingMap_ = overlappingMap;
 
-        this->initializeOverlappingOperator();
 
         // Compute
         auto out = Teuchos::getFancyOStream (Teuchos::rcpFromRef (std::cout));
@@ -181,8 +188,13 @@ namespace FROSch {
 
         MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*neumannMatrix,false,1.0,*robinMatrix,false, 1.0,overlappingMatrix, *out);
         overlappingMatrix->fillComplete();
-        this->OverlappingMatrix_ = overlappingMatrix.getConst();
 
+        this->OverlappingMatrix_ = neumannMatrix.getConst(); //overlappingMatrix.getConst();
+
+        //auto teuchos_out = Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout));
+        //this->OverlappingMatrix_->describe(*teuchos_out, Teuchos::VERB_EXTREME);
+
+        this->initializeOverlappingOperator();
         return this->computeOverlappingOperator();
     }
 

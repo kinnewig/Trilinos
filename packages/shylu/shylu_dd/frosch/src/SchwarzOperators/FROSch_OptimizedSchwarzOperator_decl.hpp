@@ -24,10 +24,13 @@ namespace FROSch {
 
     protected:
 
-        using XLongLongMultiVector              = Xpetra::MultiVector<long long,LO,GO,NO>; // TODO?
-        using XLongLongMultiVectorPtr           = RCP<XLongLongMultiVector>;
         using XMultiVector                      = typename SchwarzOperator<SC,LO,GO,NO>::XMultiVector;
         using XMultiVectorPtr                   = typename SchwarzOperator<SC,LO,GO,NO>::XMultiVectorPtr;
+
+        template <typename S>
+        using XMultiVectorTemplate              = Xpetra::MultiVector<S,LO,GO,NO>;
+        template <typename S>
+        using XMultiVectorTemplatePtr           = RCP<XMultiVectorTemplate<S>>;
 
         using XMatrix                           = typename SchwarzOperator<SC,LO,GO,NO>::XMatrix;
         using XMatrixPtr                        = typename SchwarzOperator<SC,LO,GO,NO>::XMatrixPtr;
@@ -73,10 +76,12 @@ namespace FROSch {
         * @param cell_list Description of the cell data.
         * @param vertex_list Description of the vertex list.
         */
-        int communicateOverlappingTriangulation(XLongLongMultiVectorPtr elementList,
-                                                XMultiVectorPtr         nodeList,
-                                                XLongLongMultiVectorPtr &elementListOverlapping,
-                                                XMultiVectorPtr         &nodeListOverlapping);
+        int communicateOverlappingTriangulation(XMultiVectorTemplatePtr<long long>  elementList,
+                                                XMultiVectorTemplatePtr<int>        elementList2,
+                                                XMultiVectorPtr                     nodeList,
+                                                XMultiVectorTemplatePtr<long long> &elementListOverlapping,
+                                                XMultiVectorTemplatePtr<int>       &elementList2Overlapping,
+                                                XMultiVectorPtr                    &nodeListOverlapping);
 
        /**
         * TODO: improve this description
