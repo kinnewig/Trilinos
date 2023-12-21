@@ -95,6 +95,15 @@ namespace FROSch {
 
         virtual int compute() = 0;
 
+	virtual void apply(const XMultiVector &x,
+                           XMultiVector &y,
+                           ETransp mode=NO_TRANS,
+                           SC alpha=ScalarTraits<SC>::one(),
+                           SC beta=ScalarTraits<SC>::zero()) const
+        {
+        	this->apply(x,y,true,mode,alpha,beta);
+        };
+
         virtual void apply(const XMultiVector &x,
                            XMultiVector &y,
                            bool usePreconditionerOnly,
