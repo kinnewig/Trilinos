@@ -92,6 +92,18 @@ namespace FROSch {
          *  Set a value RobinMatrix.
          */
         int compute();
+        
+        /**
+         *  apply for Xpetra::Operator (remove!)
+         */
+       	virtual void apply(const XMultiVector &x,
+                           XMultiVector &y,
+                           ETransp mode=NO_TRANS,
+                           SC alpha=ScalarTraits<SC>::one(),
+                           SC beta=ScalarTraits<SC>::zero()) const
+        {
+        	this->apply(x,y,true,mode,alpha,beta);
+        };
 
         /**
          *  Set a value RobinMatrix.
