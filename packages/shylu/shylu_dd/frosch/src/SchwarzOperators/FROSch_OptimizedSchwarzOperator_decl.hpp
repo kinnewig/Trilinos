@@ -102,7 +102,7 @@ namespace FROSch {
                            SC alpha=ScalarTraits<SC>::one(),
                            SC beta=ScalarTraits<SC>::zero()) const
         {
-        	this->apply(x,y,true,mode,alpha,beta);
+        	OverlappingOperator<SC,LO,GO,NO>::apply(x,y,true,mode,alpha,beta);
         };
 
         /**
