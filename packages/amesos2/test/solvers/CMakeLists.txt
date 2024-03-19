@@ -384,7 +384,9 @@ ENDIF()
 
 ##### MUMPS Tests ####
 #MUMPS requires int/int type
-IF (${PACKAGE_NAME}_ENABLE_MUMPS AND Tpetra_INST_INT_INT)
+# Let's see what happens if we reenable MUMPS
+#IF (${PACKAGE_NAME}_ENABLE_MUMPS AND Tpetra_INST_INT_INT)
+IF (${PACKAGE_NAME}_ENABLE_MUMPS)
    TRIBITS_ADD_EXECUTABLE_AND_TEST(
    MUMPS_UnitTests
    SOURCES

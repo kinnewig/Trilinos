@@ -11,10 +11,11 @@ SET(${PACKAGE_NAME_UC}_VERSION "0.3d")
 # B) Set up package-specific options
 #
 
-IF (${PACKAGE_NAME}_ENABLE_MUMPS AND NOT Tpetra_INST_INT_INT)
-   MESSAGE(WARNING "*****Amesos2 will not provide MUMPS Support with Tpetra_INST_INT_INT OFF.*****")
-  SET(HAVE_${PACKAGE_NAME_UC}_MUMPS OFF)
-ENDIF ()
+# Let's disable this and see what happens:
+#IF (${PACKAGE_NAME}_ENABLE_MUMPS AND NOT Tpetra_INST_INT_INT)
+#   MESSAGE(WARNING "*****Amesos2 will not provide MUMPS Support with Tpetra_INST_INT_INT OFF.*****")
+#  SET(HAVE_${PACKAGE_NAME_UC}_MUMPS OFF)
+#ENDIF ()
 
 IF (Amesos2_ENABLE_UMFPACK)
   IF (Trilinos_ENABLE_COMPLEX_FLOAT AND NOT Trilinos_ENABLE_COMPLEX_DOUBLE)
