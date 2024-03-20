@@ -322,6 +322,8 @@ namespace FROSch {
         if (this->ParameterList_->get("Sort Overlapping Map",true)) {
             this->OverlappingElementMap_ = SortMapByGlobalIndex(this->OverlappingElementMap_);
         }
+
+        return 0;
     }
 
     // TODO: this function is otherwise only virtual
