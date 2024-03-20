@@ -134,8 +134,6 @@ namespace FROSch {
         // there are now a lot of duplicates. Let's remove those.
         FROSch::sortunique(array);
 
-
-
         XMapPtr overlappingNodeMap = Xpetra::MapFactory<LO,GO,NO>::Build(DualGraph_->getMap()->lib(), DualGraph_->getMap()->getMaxGlobalIndex()+1, array(), 0, DualGraph_->getMap()->getComm());
 
         // Communicate the vertex list
@@ -189,7 +187,8 @@ namespace FROSch {
         MatrixMatrix<SC,LO,GO,NO>::TwoMatrixAdd(*neumannMatrix,false,1.0,*robinMatrix,false, 1.0,overlappingMatrix, *out);
         overlappingMatrix->fillComplete();
 
-        this->OverlappingMatrix_ = neumannMatrix.getConst(); //overlappingMatrix.getConst();
+        //this->OverlappingMatrix_ = neumannMatrix.getConst(); // <-- Used to bypass the multiplication
+        this->OverlappingMatrix_ = overlappingMatrix.getConst();
 
         //auto teuchos_out = Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout));
         //this->OverlappingMatrix_->describe(*teuchos_out, Teuchos::VERB_EXTREME);
