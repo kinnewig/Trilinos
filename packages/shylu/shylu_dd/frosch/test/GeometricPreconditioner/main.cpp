@@ -110,24 +110,26 @@ assembleMatrix(
     RCP<MultiVector<GO, LO, GO, NO>>  cellVector,
     Array<GO>                         dofsOnBoundary
 ){
-  unsigned int nGlobalDofs = locallyOwnedDofs->getGlobalNumElements();
+  GO nGlobalDofs      = locallyOwnedDofs->getGlobalNumElements();
+  LO nVerticesPerCell = 4;
 
   RCP<CrsMatrix<SC, LO, GO, NO>> returnMatrix = 
     CrsMatrixFactory<SC, LO, GO, NO>::Build(locallyOwnedDofs, nGlobalDofs);
 
-  Array<Array<double>> localStiffnessMatrix = 
-    {Array<double>{ 4.0/6.0, -1.0/6.0, -1.0/6.0, -2.0/6.0}, 
-     Array<double>{-1.0/6.0,  4.0/6.0, -1.0/3.0, -1.0/6.0},
-     Array<double>{-1.0/6.0, -1.0/3.0,  4.0/6.0, -1.0/6.0},
-     Array<double>{-2.0/6.0, -1.0/6.0, -1.0/6.0,  4.0/6.0}};
+
+  Array<Array<SC>> localStiffnessMatrix = 
+    {Array<SC>{ 4.0/6.0, -1.0/6.0, -1.0/6.0, -2.0/6.0}, 
+     Array<SC>{-1.0/6.0,  4.0/6.0, -1.0/3.0, -1.0/6.0},
+     Array<SC>{-1.0/6.0, -1.0/3.0,  4.0/6.0, -1.0/6.0},
+     Array<SC>{-2.0/6.0, -1.0/6.0, -1.0/6.0,  4.0/6.0}};
 
   Array<Array<GO>> cellDataArray = extractRcpMultiVector(cellVector);
 
   // for simplicity we first create a dense matrix and create a sparse matrix out of that later.
-  Array<Array<double>> fullMatrix(nGlobalDofs, Array<double>(nGlobalDofs));
+  Array<Array<SC>> fullMatrix(nGlobalDofs, Array<SC>(nGlobalDofs));
   for(size_t cell = 0; cell < cellVector->getLocalLength(); ++cell)
-    for(GO i = 0; i < 4; ++i)
-      for(GO j = 0; j < 4; ++j)
+    for(LO i = 0; i < nVerticesPerCell; ++i)
+      for(LO j = 0; j < nVerticesPerCell; ++j)
           fullMatrix[cellDataArray[cell][i]][cellDataArray[cell][j]] += localStiffnessMatrix[i][j];
 
   // Apply boundary conditions
@@ -142,7 +144,7 @@ assembleMatrix(
   for (auto globalRow : locallyRelevantDofs->getLocalElementList()) {
     Array<GO> cols;
     Array<SC> vals;
-    for (unsigned int i = 0; i < nGlobalDofs; ++i) {
+    for (GO i = 0; i < nGlobalDofs; ++i) {
       if (std::abs(fullMatrix[globalRow][i]) > 1e-6) {
         cols.push_back(i);
         vals.push_back(fullMatrix[globalRow][i]);
@@ -160,10 +162,11 @@ assembleMatrix(
 RCP<MultiVector<SC, LO, GO, NO>>
 assembleRHS(
     RCP<Map<LO, GO, NO>>              locallyOwnedDofs,
-    Array<GO>                         dofsOnBoundary
+    Array<GO>                         dofsOnBoundary,
+    double                            h /* step width */
 ) {
   RCP<MultiVector<SC, LO, GO, NO>> returnVector = MultiVectorFactory<SC, LO, GO, NO>::Build(locallyOwnedDofs, 1);
-  returnVector->putScalar( 1.0/16.0 );
+  returnVector->putScalar( h * h );
 
   for (auto gid : dofsOnBoundary) 
     if (locallyOwnedDofs->isNodeGlobalElement(gid))
@@ -180,8 +183,8 @@ assembleInterfaceMatrix(
     RCP<MultiVector<GO, LO, GO, NO>>  cellVector,
     Array<GO>                         dofsOnInterface
   ){
-
-  unsigned int nGlobalDofs = locallyOwnedDofs->getGlobalNumElements();
+  GO nGlobalDofs      = locallyOwnedDofs->getGlobalNumElements();
+  LO nVerticesPerCell = 4;
 
   RCP<CrsMatrix<SC, LO, GO, NO>> returnMatrix = 
     CrsMatrixFactory<SC, LO, GO, NO>::Build(locallyOwnedDofs, nGlobalDofs);
@@ -189,12 +192,12 @@ assembleInterfaceMatrix(
   Array<Array<GO>> cellDataArray = extractRcpMultiVector(cellVector);
 
   // for simplicity we first create a dense matrix and create a sparse matrix out of that later.
-  Array<Array<double>> fullMatrix(nGlobalDofs, Array<double>(nGlobalDofs));
+  Array<Array<SC>> fullMatrix(nGlobalDofs, Array<SC>(nGlobalDofs));
   for(size_t cell = 0; cell < cellVector->getLocalLength(); ++cell)
-    for(GO i = 0; i < 4; ++i) {
+    for(LO i = 0; i < nVerticesPerCell; ++i) {
       if(!contains(dofsOnInterface, cellDataArray[cell][i]))
         continue;
-      for(GO j = 0; j < 4; ++j)
+      for(LO j = 0; j < nVerticesPerCell; ++j)
         if(contains(dofsOnInterface, cellDataArray[cell][j]))
           fullMatrix[cellDataArray[cell][i]][cellDataArray[cell][j]] += 0.0625;
     }
@@ -203,7 +206,7 @@ assembleInterfaceMatrix(
   for (auto globalRow : locallyOwnedDofs->getLocalElementList()) {
     Array<GO> cols;
     Array<SC> vals;
-    for (unsigned int i = 0; i < nGlobalDofs; ++i) {
+    for (GO i = 0; i < nGlobalDofs; ++i) {
       if (std::abs(fullMatrix[globalRow][i]) > 1e-6) {
         cols.push_back(i);
         vals.push_back(fullMatrix[globalRow][i]);
@@ -269,10 +272,19 @@ main(int argc, char* argv[])
    * */
 
   // Geometric information:
-  unsigned int dim               = 2;
-  unsigned int vertices_per_cell = 4;
-  GO           n_local_vertices  = 15;
-  GO           nGlobalDofs       = 25;
+  unsigned int dim              = 2;
+  LO           nVerticesPerCell = 4;
+  LO           nFacesPerCell    = 4;
+
+  // Problem size:
+  LO           nLocalDofs       = 15;
+  GO           nGlobalDofs      = 25;
+  GO           nCellsPerRow     = 4;
+  double       domainSize       = 1.0;
+
+  GO           nCells           = nCellsPerRow * nCellsPerRow;
+  LO           nLocalCells      = 8;
+  double       h                = domainSize / ( (double)nCellsPerRow );
 
 
   // ---------------------------------------------------------------------------------
@@ -290,7 +302,7 @@ main(int argc, char* argv[])
       localIndices = Array<GO>{8, 9, 10, 11, 12, 13, 14, 15};
 
     rowMap = Xpetra::MapFactory<LO, GO, NO>::Build(
-      Xpetra::UseTpetra, 16, localIndices, 0,  CommWorld);
+      Xpetra::UseTpetra, nCells, localIndices, 0,  CommWorld);
   }
 
 
@@ -299,7 +311,7 @@ main(int argc, char* argv[])
 
   // create the connectivity map, i,e, the dual_graph
   // Remark: this would normally be provided by the finite element library
-  RCP<CrsGraph<LO, GO, NO>> dualGraph = CrsGraphFactory<LO, GO, NO>::Build(rowMap, 4); 
+  RCP<CrsGraph<LO, GO, NO>> dualGraph = CrsGraphFactory<LO, GO, NO>::Build(rowMap, nFacesPerCell); 
   {
     Array<Array<GO>> neighbours;
     if (rank == 0) {
@@ -340,15 +352,15 @@ main(int argc, char* argv[])
   // Remark: this would normally be provided by the finite element library
   RCP<Map<LO, GO, NO>> locallyRelevantDofs;
   {
-    Array<GO> indices(n_local_vertices);
+    Array<GO> indices(nLocalDofs);
     if (rank == 0) 
-      for(unsigned int vertex_index = 0; vertex_index < n_local_vertices; ++vertex_index)
+      for(GO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index)
         indices[vertex_index] = vertex_index;
     else if (rank == 1)
-      for(unsigned int vertex_index = 0; vertex_index < n_local_vertices; ++vertex_index)
+      for(GO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index)
         indices[vertex_index] = 10 + vertex_index;
 
-    locallyRelevantDofs= Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, 25, indices, 0, CommWorld);
+    locallyRelevantDofs= Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, nGlobalDofs, indices, 0, CommWorld);
   }
 
   // Locally owned DoF list:
@@ -357,13 +369,13 @@ main(int argc, char* argv[])
   {
     Array<GO> indices;
     if (rank == 0) 
-      for(unsigned int vertex_index = 0; vertex_index < 15; ++vertex_index)
+      for(GO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index)
         indices.push_back(vertex_index);
     else if (rank == 1)
-      for(unsigned int vertex_index = 15; vertex_index < nGlobalDofs; ++vertex_index)
+      for(GO vertex_index = nLocalDofs; vertex_index < nGlobalDofs; ++vertex_index)
         indices.push_back(vertex_index);
 
-    locallyOwnedDofs = Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, 25, indices, 0, CommWorld);
+    locallyOwnedDofs = Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, nGlobalDofs, indices, 0, CommWorld);
   }
 
 
@@ -385,14 +397,14 @@ main(int argc, char* argv[])
     // Fill node_vector: 
     // (this part is normally provided by the FEM-Software)
     if (rank == 0)
-      for(unsigned int vertex_index = 0; vertex_index < n_local_vertices; ++vertex_index) {
-        nodesVectorData[0][vertex_index] = (vertex_index % 5) / 4.0;         // x-component of the node location
-        nodesVectorData[1][vertex_index] = (vertex_index / 5) / 4.0;         // y-component of the node location
+      for(LO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index) {
+        nodesVectorData[0][vertex_index] = (vertex_index % (nCellsPerRow + 1)) / ( (double)nCellsPerRow ); // x-component of the node location
+        nodesVectorData[1][vertex_index] = (vertex_index / (nCellsPerRow + 1)) / ( (double)nCellsPerRow ); // y-component of the node location
       }
     else if (rank == 1)
-      for(unsigned int vertex_index = 0; vertex_index < n_local_vertices; ++vertex_index) {
-        nodesVectorData[0][vertex_index] =  (vertex_index % 5) / 4.0;         // x-component of the node location
-        nodesVectorData[1][vertex_index] = ((vertex_index / 5) / 4.0) + 0.5;  // y-component of the node location
+      for(LO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index) {
+        nodesVectorData[0][vertex_index] =  (vertex_index % (nCellsPerRow + 1)) / ( (double)nCellsPerRow );                       // x-component of the node location
+        nodesVectorData[1][vertex_index] = ((vertex_index / (nCellsPerRow + 1)) / ( (double)nCellsPerRow )) + (domainSize / 2.0); // y-component of the node location
       }
   }
    
@@ -400,11 +412,11 @@ main(int argc, char* argv[])
   //   Store a description of each cell present in the triangulation.
   //   Each cell is described by it's vertices.
   RCP<MultiVector<GO, LO, GO, NO>> cellVector = 
-    MultiVectorFactory<GO, LO, GO, NO>::Build(rowMap, vertices_per_cell);
+    MultiVectorFactory<GO, LO, GO, NO>::Build(rowMap, nVerticesPerCell);
   {
     // Create an Array, such we can access its data
-    Array<ArrayRCP<GO>> cellVectorData(vertices_per_cell);
-    for (unsigned int i = 0; i < vertices_per_cell; ++i)
+    Array<ArrayRCP<GO>> cellVectorData(nVerticesPerCell);
+    for (LO i = 0; i < nVerticesPerCell; ++i)
       cellVectorData[i] = cellVector->getDataNonConst(i);
 
     // Prepare the information:
@@ -424,8 +436,8 @@ main(int argc, char* argv[])
         };
 
     // copy the data into the cell_data_vector:
-    for(unsigned int cell_index = 0; cell_index < 8; ++cell_index ) 
-      for(unsigned int cell_vertex_index = 0; cell_vertex_index < vertices_per_cell; ++cell_vertex_index) 
+    for(LO cell_index = 0; cell_index < nLocalCells; ++cell_index ) 
+      for(LO cell_vertex_index = 0; cell_vertex_index < nVerticesPerCell; ++cell_vertex_index) 
         cellVectorData[cell_vertex_index][cell_index] = cellDataArray[cell_index][cell_vertex_index];
   }
 
@@ -437,11 +449,11 @@ main(int argc, char* argv[])
   {
     ArrayRCP<GO> auxillaryVectorData = auxillaryVector->getDataNonConst(0);
     if (rank == 0) 
-      for(unsigned int cell_index = 0; cell_index < 8; ++cell_index ) 
+      for(LO cell_index = 0; cell_index < nLocalCells; ++cell_index ) 
         auxillaryVectorData[cell_index] = cell_index;
     else if (rank == 1)
-      for(unsigned int cell_index = 0; cell_index < 8; ++cell_index ) 
-        auxillaryVectorData[cell_index] = cell_index + 8;
+      for(LO cell_index = 0; cell_index < nLocalCells; ++cell_index ) 
+        auxillaryVectorData[cell_index] = cell_index + nLocalCells;
   }
 
 
@@ -492,11 +504,11 @@ main(int argc, char* argv[])
    */
   
   // convert to Xpetra::Matrix
-  RCP<Matrix<double, LO, GO, NO>> k = Teuchos::rcp(new CrsMatrixWrap<double, LO, GO, NO>(systemMatrix));
+  RCP<Matrix<SC, LO, GO, NO>> k = Teuchos::rcp(new CrsMatrixWrap<SC, LO, GO, NO>(systemMatrix));
 
   // Test the intialize function:
-  RCP<GeometricOneLevelPreconditioner<double, LO, GO, NO>> geometricPreconditioner =
-    rcp(new GeometricOneLevelPreconditioner<double, LO, GO, NO>(k.getConst(), dualGraph, precList));
+  RCP<GeometricOneLevelPreconditioner<SC, LO, GO, NO>> geometricPreconditioner =
+    rcp(new GeometricOneLevelPreconditioner<SC, LO, GO, NO>(k.getConst(), dualGraph, precList));
 
 
   // Test the communication function:
@@ -510,6 +522,8 @@ main(int argc, char* argv[])
 
   // ---------------------------------------------------------------------------------
   // Step 7: Build the local system
+
+  LO nDofsOnSubdomain = 20;
  
   // Reorder the output to match the original cell enumeration
   { 
@@ -519,15 +533,15 @@ main(int argc, char* argv[])
     RCP<MultiVector<GO, LO, GO, NO>> cellVectorOriginal = 
       MultiVectorFactory<GO, LO, GO, NO>::Build(cellVector, Teuchos::Copy);
 
-    Array<ArrayRCP<GO>>       cellVectorData(vertices_per_cell);
-    Array<ArrayRCP<const GO>> cellVectorDataSource(vertices_per_cell);
-    for (unsigned int i = 0; i < vertices_per_cell; ++i) {
+    Array<ArrayRCP<LO>>       cellVectorData(nVerticesPerCell);
+    Array<ArrayRCP<const LO>> cellVectorDataSource(nVerticesPerCell);
+    for (LO i = 0; i < nVerticesPerCell; ++i) {
       cellVectorData[i]       = cellVector->getDataNonConst(i);
       cellVectorDataSource[i] = cellVectorOriginal->getData(i);
     }
 
     for(unsigned int cell_index = 0; cell_index < cellVectorData[0].size(); ++cell_index ) 
-      for(unsigned int cell_vertex_index = 0; cell_vertex_index < vertices_per_cell; ++cell_vertex_index) 
+      for(unsigned int cell_vertex_index = 0; cell_vertex_index < nVerticesPerCell; ++cell_vertex_index) 
         cellVectorData[cell_vertex_index][cell_index] = cellVectorDataSource[cell_vertex_index][indexList[cell_index]];
   }
 
@@ -537,11 +551,11 @@ main(int argc, char* argv[])
 
   RCP<Map<LO,GO,NO>> localDofs;
   {
-    Array<GO> indices(20);
-    for(unsigned int vertex_index = 0; vertex_index < 20; ++vertex_index)
+    Array<GO> indices(nDofsOnSubdomain);
+    for(GO vertex_index = 0; vertex_index < nDofsOnSubdomain; ++vertex_index)
           indices[vertex_index] = vertex_index;
 
-    localDofs= Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, 20, indices, 0, CommSelf);
+    localDofs= Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, nDofsOnSubdomain, indices, 0, CommSelf);
   }
 
   Array<GO> localDofsOnBoundary;
@@ -559,9 +573,9 @@ main(int argc, char* argv[])
   // Step 8: Initialize the GeometricOneLevelPreconditioner
   
   // create the overlapping map:
-  Array<GO> overlappingArray(20);
+  Array<GO> overlappingArray(nDofsOnSubdomain);
   if (rank == 0)
-    for(GO i = 0; i < 20; ++i)
+    for(GO i = 0; i < nDofsOnSubdomain; ++i)
       overlappingArray[i] = i; 
   else if (rank == 1)
   {
@@ -573,7 +587,7 @@ main(int argc, char* argv[])
       overlappingArray[i-9] = + i; 
   }
   Teuchos::RCP<Xpetra::Map<LO, GO, NO>> overlappingMap = 
-    Xpetra::MapFactory<LO, GO, NO>::Build(Xpetra::UseTpetra, 20, overlappingArray, 0, CommWorld);
+    Xpetra::MapFactory<LO, GO, NO>::Build(Xpetra::UseTpetra, nDofsOnSubdomain, overlappingArray, 0, CommWorld);
 
   geometricPreconditioner->initialize(overlappingMap);
 
