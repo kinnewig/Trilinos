@@ -27,11 +27,11 @@
 #include <BelosSolverFactory.hpp>
 #include <BelosXpetraAdapter.hpp>
 
+// Test include 
+#include "FROSchTestLaplace.hpp"
+
 #include <iostream>
 #include <fstream>
-#include <cmath>
-#include <algorithm>
-
 
 using UN    = unsigned;
 using SC    = double;
@@ -52,172 +52,6 @@ typedef Belos::SolverFactory<SC, multivector_type, operatort_type> solverfactory
 typedef Belos::SolverManager<SC, multivector_type, operatort_type> solver_type;
 typedef XpetraOp<SC, LO , GO, NO> xpetraop_type;
 
-bool
-contains(Teuchos::Array<GO> array, GO value) {
-  for(GO i : array)
-    if (i == value)
-      return true;
-  return false;
-}
-
-
-Array<GO>
-extractIndexList(RCP<MultiVector<GO, LO, GO, NO>>  mv) {
-  const size_t m = mv->getLocalLength();
-
-  Array<GO> indexList(m);
-  for (unsigned int j = 0; j < m; ++j)
-    indexList[j] = j;
-
-  {
-    auto data = mv->getData(0);
-    std::sort(indexList.begin(),
-              indexList.end(),
-              [data](unsigned int a, unsigned int b) {
-                return data[a] < data[b];
-              });
-  }
-
-  return indexList;;
-}
-
-
-
-template <typename Number>
-Array<Array<Number>>
-extractRcpMultiVector(RCP<MultiVector<Number, LO, GO, NO>>  mv) {
-  const size_t n = mv->getNumVectors();
-  const size_t m = mv->getLocalLength();
-
-  Array<Array<Number>> list(m, Array<Number>(n));
-  for (unsigned int i = 0; i < n; ++i)
-    {
-      auto data = mv->getData(i);
-
-      for (unsigned int j = 0; j < m; ++j)
-        list[j][i] = data[j];
-    }
-
-  return list;
-}
-
-
-
-RCP<CrsMatrix<SC, LO, GO, NO>> 
-assembleMatrix(
-    RCP<Map<LO, GO, NO>>              locallyOwnedDofs, 
-    RCP<Map<LO, GO, NO>>              locallyRelevantDofs,
-    RCP<MultiVector<GO, LO, GO, NO>>  cellVector,
-    Array<GO>                         dofsOnBoundary
-){
-  GO nGlobalDofs      = locallyOwnedDofs->getGlobalNumElements();
-  LO nVerticesPerCell = 4;
-
-  RCP<CrsMatrix<SC, LO, GO, NO>> returnMatrix = 
-    CrsMatrixFactory<SC, LO, GO, NO>::Build(locallyOwnedDofs, nGlobalDofs);
-
-
-  Array<Array<SC>> localStiffnessMatrix = 
-    {Array<SC>{ 4.0/6.0, -1.0/6.0, -1.0/6.0, -2.0/6.0}, 
-     Array<SC>{-1.0/6.0,  4.0/6.0, -1.0/3.0, -1.0/6.0},
-     Array<SC>{-1.0/6.0, -1.0/3.0,  4.0/6.0, -1.0/6.0},
-     Array<SC>{-2.0/6.0, -1.0/6.0, -1.0/6.0,  4.0/6.0}};
-
-  Array<Array<GO>> cellDataArray = extractRcpMultiVector(cellVector);
-
-  // for simplicity we first create a dense matrix and create a sparse matrix out of that later.
-  Array<Array<SC>> fullMatrix(nGlobalDofs, Array<SC>(nGlobalDofs));
-  for(size_t cell = 0; cell < cellVector->getLocalLength(); ++cell)
-    for(LO i = 0; i < nVerticesPerCell; ++i)
-      for(LO j = 0; j < nVerticesPerCell; ++j)
-          fullMatrix[cellDataArray[cell][i]][cellDataArray[cell][j]] += localStiffnessMatrix[i][j];
-
-  // Apply boundary conditions
-  for(GO i : dofsOnBoundary) 
-    for(GO j = 0; j < nGlobalDofs; ++j) 
-      if (i != j) {
-        fullMatrix[i][j] = 0;
-        fullMatrix[j][i] = 0;
-      }
-
-  // Create the distributed sparse matrix 
-  for (auto globalRow : locallyRelevantDofs->getLocalElementList()) {
-    Array<GO> cols;
-    Array<SC> vals;
-    for (GO i = 0; i < nGlobalDofs; ++i) {
-      if (std::abs(fullMatrix[globalRow][i]) > 1e-6) {
-        cols.push_back(i);
-        vals.push_back(fullMatrix[globalRow][i]);
-      }
-    }
-    returnMatrix->insertGlobalValues(globalRow, cols, vals);
-  }
-  returnMatrix->fillComplete();
-
-  return returnMatrix;
-}
-
-
-
-RCP<MultiVector<SC, LO, GO, NO>>
-assembleRHS(
-    RCP<Map<LO, GO, NO>>              locallyOwnedDofs,
-    Array<GO>                         dofsOnBoundary,
-    double                            h /* step width */
-) {
-  RCP<MultiVector<SC, LO, GO, NO>> returnVector = MultiVectorFactory<SC, LO, GO, NO>::Build(locallyOwnedDofs, 1);
-  returnVector->putScalar( h * h );
-
-  for (auto gid : dofsOnBoundary) 
-    if (locallyOwnedDofs->isNodeGlobalElement(gid))
-      returnVector->replaceLocalValue(locallyOwnedDofs->getLocalElement(gid), 0, 0.0); 
-
-  return returnVector;
-}
-
-
-
-RCP<CrsMatrix<SC, LO, GO, NO>> 
-assembleInterfaceMatrix(
-    RCP<Map<LO, GO, NO>>              locallyOwnedDofs,
-    RCP<MultiVector<GO, LO, GO, NO>>  cellVector,
-    Array<GO>                         dofsOnInterface
-  ){
-  GO nGlobalDofs      = locallyOwnedDofs->getGlobalNumElements();
-  LO nVerticesPerCell = 4;
-
-  RCP<CrsMatrix<SC, LO, GO, NO>> returnMatrix = 
-    CrsMatrixFactory<SC, LO, GO, NO>::Build(locallyOwnedDofs, nGlobalDofs);
-
-  Array<Array<GO>> cellDataArray = extractRcpMultiVector(cellVector);
-
-  // for simplicity we first create a dense matrix and create a sparse matrix out of that later.
-  Array<Array<SC>> fullMatrix(nGlobalDofs, Array<SC>(nGlobalDofs));
-  for(size_t cell = 0; cell < cellVector->getLocalLength(); ++cell)
-    for(LO i = 0; i < nVerticesPerCell; ++i) {
-      if(!contains(dofsOnInterface, cellDataArray[cell][i]))
-        continue;
-      for(LO j = 0; j < nVerticesPerCell; ++j)
-        if(contains(dofsOnInterface, cellDataArray[cell][j]))
-          fullMatrix[cellDataArray[cell][i]][cellDataArray[cell][j]] += 0.0625;
-    }
-
-  // Create the distributed sparse matrix 
-  for (auto globalRow : locallyOwnedDofs->getLocalElementList()) {
-    Array<GO> cols;
-    Array<SC> vals;
-    for (GO i = 0; i < nGlobalDofs; ++i) {
-      if (std::abs(fullMatrix[globalRow][i]) > 1e-6) {
-        cols.push_back(i);
-        vals.push_back(fullMatrix[globalRow][i]);
-      }
-    }
-    returnMatrix->insertGlobalValues(globalRow, cols, vals);
-  }
-  returnMatrix->fillComplete();
-
-  return returnMatrix;
-}
 
 
 
@@ -237,6 +71,9 @@ main(int argc, char* argv[])
   RCP<FancyOStream> out = VerboseObjectBase::getDefaultOStream();   
 
   int rank = CommWorld->getRank();
+
+  // The test is designed to be executed with 2 ranks!
+  assert(CommWorld->getSize() == 2); 
 
 
   /* We consider the following grid:
@@ -354,11 +191,11 @@ main(int argc, char* argv[])
   {
     Array<GO> indices(nLocalDofs);
     if (rank == 0) 
-      for(GO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index)
-        indices[vertex_index] = vertex_index;
+      for(GO dofIndex = 0; dofIndex < nLocalDofs; ++dofIndex)
+        indices[dofIndex] = dofIndex;
     else if (rank == 1)
-      for(GO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index)
-        indices[vertex_index] = 10 + vertex_index;
+      for(GO dofIndex = 0; dofIndex < nLocalDofs; ++dofIndex)
+        indices[dofIndex] = 10 + dofIndex;
 
     locallyRelevantDofs= Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, nGlobalDofs, indices, 0, CommWorld);
   }
@@ -369,11 +206,11 @@ main(int argc, char* argv[])
   {
     Array<GO> indices;
     if (rank == 0) 
-      for(GO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index)
-        indices.push_back(vertex_index);
+      for(GO dofIndex = 0; dofIndex < nLocalDofs; ++dofIndex)
+        indices.push_back(dofIndex);
     else if (rank == 1)
-      for(GO vertex_index = nLocalDofs; vertex_index < nGlobalDofs; ++vertex_index)
-        indices.push_back(vertex_index);
+      for(GO dofIndex = nLocalDofs; dofIndex < nGlobalDofs; ++dofIndex)
+        indices.push_back(dofIndex);
 
     locallyOwnedDofs = Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, nGlobalDofs, indices, 0, CommWorld);
   }
@@ -386,75 +223,18 @@ main(int argc, char* argv[])
   // Node Data
   //   Stores a list of vertices present in the triangulation. 
   //   (We use that the dofs correspond to the vertices in this setting)
-  RCP<MultiVector<double, LO, GO, NO>> nodesVector = 
-    MultiVectorFactory<double, LO, GO, NO>::Build(locallyRelevantDofs, dim);
-  {
-    // Create an Array, such we can access its data
-    Array<ArrayRCP<double>> nodesVectorData(dim);
-    for (unsigned int i = 0; i < dim; ++i)
-      nodesVectorData[i] = nodesVector->getDataNonConst(i);
-
-    // Fill node_vector: 
-    // (this part is normally provided by the FEM-Software)
-    if (rank == 0)
-      for(LO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index) {
-        nodesVectorData[0][vertex_index] = (vertex_index % (nCellsPerRow + 1)) / ( (double)nCellsPerRow ); // x-component of the node location
-        nodesVectorData[1][vertex_index] = (vertex_index / (nCellsPerRow + 1)) / ( (double)nCellsPerRow ); // y-component of the node location
-      }
-    else if (rank == 1)
-      for(LO vertex_index = 0; vertex_index < nLocalDofs; ++vertex_index) {
-        nodesVectorData[0][vertex_index] =  (vertex_index % (nCellsPerRow + 1)) / ( (double)nCellsPerRow );                       // x-component of the node location
-        nodesVectorData[1][vertex_index] = ((vertex_index / (nCellsPerRow + 1)) / ( (double)nCellsPerRow )) + (domainSize / 2.0); // y-component of the node location
-      }
-  }
-   
+  RCP<MultiVector<double, LO, GO, NO>> nodesVector = createNodesVector(dim, nCellsPerRow, nLocalDofs, domainSize, locallyRelevantDofs, rank);
+       
   // Cell Data
   //   Store a description of each cell present in the triangulation.
   //   Each cell is described by it's vertices.
-  RCP<MultiVector<GO, LO, GO, NO>> cellVector = 
-    MultiVectorFactory<GO, LO, GO, NO>::Build(rowMap, nVerticesPerCell);
-  {
-    // Create an Array, such we can access its data
-    Array<ArrayRCP<GO>> cellVectorData(nVerticesPerCell);
-    for (LO i = 0; i < nVerticesPerCell; ++i)
-      cellVectorData[i] = cellVector->getDataNonConst(i);
-
-    // Prepare the information:
-    // (this part is normally provided by the FEM-Software)
-    Array<Array<GO>> cellDataArray;
-    if (rank == 0) 
-      cellDataArray = 
-        Array<Array<GO>>{
-          Array<GO>{0,1,2,3},   Array<GO>{1,4,3,5},   Array<GO>{4,6,5,7},   Array<GO>{6,8,7,9},
-          Array<GO>{2,3,10,11}, Array<GO>{3,5,11,12}, Array<GO>{5,7,12,13}, Array<GO>{7,9,13,14}
-        };
-    else if (rank == 1)
-      cellDataArray = 
-        Array<Array<GO>>{
-          Array<GO>{10,11,15,16}, Array<GO>{11,12,16,17}, Array<GO>{12,13,17,18}, Array<GO>{13,14,18,19},
-          Array<GO>{15,16,20,21}, Array<GO>{16,17,21,22}, Array<GO>{17,18,22,23}, Array<GO>{18,19,23,24}
-        };
-
-    // copy the data into the cell_data_vector:
-    for(LO cell_index = 0; cell_index < nLocalCells; ++cell_index ) 
-      for(LO cell_vertex_index = 0; cell_vertex_index < nVerticesPerCell; ++cell_vertex_index) 
-        cellVectorData[cell_vertex_index][cell_index] = cellDataArray[cell_index][cell_vertex_index];
-  }
-
+  RCP<MultiVector<GO, LO, GO, NO>> cellVector = createCellVector(nLocalCells, rowMap, rank);
+    
   // Auxillary Data:
   //   Here we store the global cell index. What information is stored in the 
   //   auxillary vector depends on used FEM-Software.
-  RCP<MultiVector<GO, LO, GO, NO>> auxillaryVector = 
-    MultiVectorFactory<GO, LO, GO, NO>::Build(rowMap, 1);
-  {
-    ArrayRCP<GO> auxillaryVectorData = auxillaryVector->getDataNonConst(0);
-    if (rank == 0) 
-      for(LO cell_index = 0; cell_index < nLocalCells; ++cell_index ) 
-        auxillaryVectorData[cell_index] = cell_index;
-    else if (rank == 1)
-      for(LO cell_index = 0; cell_index < nLocalCells; ++cell_index ) 
-        auxillaryVectorData[cell_index] = cell_index + nLocalCells;
-  }
+  RCP<MultiVector<GO, LO, GO, NO>> auxillaryVector = createAuxillaryVector(nLocalCells, rowMap, rank);
+  
 
 
   // ---------------------------------------------------------------------------------
@@ -473,7 +253,8 @@ main(int argc, char* argv[])
   // (this is normally done by the FEM-Software)
   RCP<MultiVector<SC, LO, GO, NO>> systemRHS = 
     assembleRHS(locallyOwnedDofs, 
-                   Array<GO>{0, 1, 4, 6, 8, 2, 9, 10, 14, 15, 19, 20, 21, 22, 23, 24} /*dofs on boundary*/);
+                   Array<GO>{0, 1, 4, 6, 8, 2, 9, 10, 14, 15, 19, 20, 21, 22, 23, 24}, /*dofs on boundary*/
+                   h);
 
   // Debugging:
   //auto print_out = Teuchos::getFancyOStream (Teuchos::rcpFromRef(std::cout));
@@ -519,6 +300,64 @@ main(int argc, char* argv[])
                                                                cellVector,
                                                                auxillaryVector);
 
+  // Debugging
+  //auto print_out = Teuchos::getFancyOStream (Teuchos::rcpFromRef(std::cout));
+  //cellVector->describe(*print_out, Teuchos::VERB_EXTREME);
+
+
+  // ---------------------------------------------------------------------------------
+  // Test 1: Communcation between ranks
+  // Check that the cellVector is correctly distributed between the ranks 
+  // (this is the most complicated one; therefore, it is sufficient to check the cellVector).
+  
+  // Create the reference:
+  {
+    RCP<MultiVector<GO, LO, GO, NO>> referenceCellVector = 
+      MultiVectorFactory<GO, LO, GO, NO>::Build(cellVector->getMap(), nVerticesPerCell);
+    {
+      Array<ArrayRCP<GO>> referenceCellVectorData(nVerticesPerCell);
+      for (LO i = 0; i < nVerticesPerCell; ++i)
+        referenceCellVectorData[i] = referenceCellVector->getDataNonConst(i);
+
+      // The hard coded (distributed) cellVector:
+      Array<Array<GO>> referenceCellDataArray;
+      if (rank == 0) 
+        referenceCellDataArray = 
+          Array<Array<GO>>{
+            Array<GO>{0, 1, 2, 3},     Array<GO>{1, 4, 3, 5},     Array<GO>{4, 6, 5, 7},     Array<GO>{6, 8, 7, 9}, 
+            Array<GO>{2, 3, 10, 11},   Array<GO>{3, 5, 11, 12},   Array<GO>{5, 7, 12, 13},   Array<GO>{7, 9, 13, 14}, 
+            Array<GO>{10, 11, 15, 16}, Array<GO>{11, 12, 16, 17}, Array<GO>{12, 13, 17, 18}, Array<GO>{13, 14, 18, 19}
+          };
+      else if (rank == 1)
+        referenceCellDataArray = 
+          Array<Array<GO>>{
+            Array<GO>{5, 6, 10, 11},   Array<GO>{6, 7, 11, 12},   Array<GO>{7, 8, 12, 13},   Array<GO>{8, 9, 13, 14}, 
+            Array<GO>{10, 11, 15, 16}, Array<GO>{11, 12, 16, 17}, Array<GO>{12, 13, 17, 18}, Array<GO>{13, 14, 18, 19}, 
+            Array<GO>{0, 1, 5, 6},     Array<GO>{1, 2, 6, 7},     Array<GO>{2, 3, 7, 8},     Array<GO>{3, 4, 8, 9}
+          };
+
+      for(LO cellIndex = 0; cellIndex < 12 /*cells per subdomain*/; ++cellIndex ) 
+        for(LO cellDofIndex = 0; cellDofIndex < nVerticesPerCell; ++cellDofIndex) 
+          referenceCellVectorData[cellDofIndex][cellIndex] = referenceCellDataArray[cellIndex][cellDofIndex];
+    }
+
+    //auto print_out = Teuchos::getFancyOStream (Teuchos::rcpFromRef(std::cout));
+    //referenceCellVector->describe(*print_out, Teuchos::VERB_EXTREME);
+
+    // create a deep copy, so we do not destroy the original
+    RCP<MultiVector<GO, LO, GO, NO>> cellVectorCopy = 
+      MultiVectorFactory<GO, LO, GO, NO>::Build(cellVector, Teuchos::Copy);
+
+
+    // Compare the vector:
+    cellVectorCopy->update(-1.0, *referenceCellVector, 1.0);
+    double cellVectorError = 0.0;
+    for (LO i = 0; i < nVerticesPerCell; ++i)
+      cellVectorError += cellVectorCopy->getVector(i)->norm2();
+
+    assert(cellVectorError < 1e-8);
+  }
+
 
   // ---------------------------------------------------------------------------------
   // Step 7: Build the local system
@@ -533,27 +372,23 @@ main(int argc, char* argv[])
     RCP<MultiVector<GO, LO, GO, NO>> cellVectorOriginal = 
       MultiVectorFactory<GO, LO, GO, NO>::Build(cellVector, Teuchos::Copy);
 
-    Array<ArrayRCP<LO>>       cellVectorData(nVerticesPerCell);
-    Array<ArrayRCP<const LO>> cellVectorDataSource(nVerticesPerCell);
+    Array<ArrayRCP<GO>>       cellVectorData(nVerticesPerCell);
+    Array<ArrayRCP<const GO>> cellVectorDataSource(nVerticesPerCell);
     for (LO i = 0; i < nVerticesPerCell; ++i) {
       cellVectorData[i]       = cellVector->getDataNonConst(i);
       cellVectorDataSource[i] = cellVectorOriginal->getData(i);
     }
 
-    for(unsigned int cell_index = 0; cell_index < cellVectorData[0].size(); ++cell_index ) 
-      for(unsigned int cell_vertex_index = 0; cell_vertex_index < nVerticesPerCell; ++cell_vertex_index) 
-        cellVectorData[cell_vertex_index][cell_index] = cellVectorDataSource[cell_vertex_index][indexList[cell_index]];
+    for(GO cellIndex = 0; cellIndex < cellVectorData[0].size(); ++cellIndex ) 
+      for(LO cellDofIndex = 0; cellDofIndex < nVerticesPerCell; ++cellDofIndex) 
+        cellVectorData[cellDofIndex][cellIndex] = cellVectorDataSource[cellDofIndex][indexList[cellIndex]];
   }
-
-  // Debugging
-  //auto print_out = Teuchos::getFancyOStream (Teuchos::rcpFromRef(std::cout));
-  //cellVector->describe(*print_out, Teuchos::VERB_EXTREME);
 
   RCP<Map<LO,GO,NO>> localDofs;
   {
     Array<GO> indices(nDofsOnSubdomain);
-    for(GO vertex_index = 0; vertex_index < nDofsOnSubdomain; ++vertex_index)
-          indices[vertex_index] = vertex_index;
+    for(GO dofIndex = 0; dofIndex < nDofsOnSubdomain; ++dofIndex)
+      indices[dofIndex] = dofIndex;
 
     localDofs= Xpetra::MapFactory<LO, GO, NO>::Build(UseTpetra, nDofsOnSubdomain, indices, 0, CommSelf);
   }
@@ -561,10 +396,10 @@ main(int argc, char* argv[])
   Array<GO> localDofsOnBoundary;
   Array<GO> localDofsOnInterface;
   if (rank == 0) {
-    localDofsOnBoundary  = Array<GO>{0, 1, 2, 4, 6, 8, 9, 10, 14, 15, 16, 17, 18, 19};
+    localDofsOnBoundary  = Array<GO>{0, 1, 2, 4, 6, 8, 9, 10, 14, 15, 19};
     localDofsOnInterface = Array<GO>{15, 16, 17, 18, 19};
   } else if (rank == 1) {
-    localDofsOnBoundary  = Array<GO>{0, 1, 2, 3, 4, 5, 9, 10, 14, 15, 16, 17, 18, 19};
+    localDofsOnBoundary  = Array<GO>{0, 4, 5, 9, 10, 14, 15, 16, 17, 18, 19};
     localDofsOnInterface = Array<GO>{0, 1, 2, 3, 4};
   }
 
@@ -583,8 +418,8 @@ main(int argc, char* argv[])
     overlappingArray[1] = 3;
     overlappingArray[2] = 5;
     overlappingArray[3] = 7;
-    for(GO i = 9; i < 25; ++i)
-      overlappingArray[i-9] = + i; 
+    for(GO i = 4; i < nDofsOnSubdomain; ++i)
+      overlappingArray[i] = i + 5; 
   }
   Teuchos::RCP<Xpetra::Map<LO, GO, NO>> overlappingMap = 
     Xpetra::MapFactory<LO, GO, NO>::Build(Xpetra::UseTpetra, nDofsOnSubdomain, overlappingArray, 0, CommWorld);
@@ -608,8 +443,10 @@ main(int argc, char* argv[])
 
   // Debugging
   //auto print_out = Teuchos::getFancyOStream (Teuchos::rcpFromRef(std::cout));
-  //if (rank == 0)
+  //if (rank == 0) {
   //  localInterfaceMatrix->describe(*print_out, Teuchos::VERB_EXTREME);
+  //  localNeumannMatrix->describe(*print_out, Teuchos::VERB_EXTREME);
+  //}
 
 
   // ---------------------------------------------------------------------------------
@@ -646,8 +483,44 @@ main(int argc, char* argv[])
   // Solve the linear syste
   solver->solve();
 
-  auto print_out = Teuchos::getFancyOStream (Teuchos::rcpFromRef(std::cout));
-  solution->describe(*print_out, Teuchos::VERB_EXTREME);
+  // Debugging
+  //auto print_out = Teuchos::getFancyOStream (Teuchos::rcpFromRef(std::cout));
+  //solution->describe(*print_out, Teuchos::VERB_EXTREME);
 
-  return 0;
+
+  // ---------------------------------------------------------------------------------
+  // Test 2: Iteration number
+  // When something goes wrong, the number of Iterations probably goes up.
+ 
+  int numIters = solver->getNumIters();
+  assert(numIters == 3);
+
+  
+  // ---------------------------------------------------------------------------------
+  // Test 3: Verify the solution
+  
+  // Create the reference solution
+  RCP<MultiVector<SC, LO, GO, NO>> referenceSolution = 
+    MultiVectorFactory<SC, LO, GO, NO>::Build(locallyOwnedDofs, 1);
+  {
+    ArrayRCP<SC> referenceSolutionData = referenceSolution->getDataNonConst(0);
+
+    // The hard coded solution:
+    Array<SC> referenceSolutionArray;
+    if (rank == 0)
+      referenceSolutionArray = Array<SC>{0.0, 0.0, 0.0, 0.0482143, 0.0, 0.0602679, 0.0, 0.0482143, 0.0, 0.0, 0.0, 0.0602679, 0.0776786, 0.0602679, 0.0};
+    else if (rank == 1)
+      referenceSolutionArray = Array<SC>{0.0, 0.0482143, 0.0602679, 0.0482143, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+    for (size_t dofIndex = 0; dofIndex < locallyOwnedDofs->getLocalNumElements(); ++dofIndex )
+      referenceSolutionData[dofIndex] = referenceSolutionArray[dofIndex];
+  }
+
+  solution->update(-1.0, *referenceSolution, 1.0);
+  double solutionError = solution->getVector(0)->norm2();
+
+  // Check that the solution is correct:
+  assert(solutionError < 1e-6);
+
+  return(EXIT_SUCCESS);
 }
