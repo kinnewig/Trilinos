@@ -8,9 +8,9 @@ TRIBITS_ADD_EXECUTABLE(
 ###########################
 ## Tpetra
 TRIBITS_ADD_TEST(
-interfacesets
-NAME test_interfacesets_DIM2_CSCommCrsMatrix_TPETRA
-ARGS "--DIM=2 --M=4 --COMMSTRAT=0 --USETPETRA"
+geometricpreconditioner
+NAME test_geometricpreconditioner
+ARGS ""
 COMM mpi
-NUM_MPI_PROCS 4
+NUM_MPI_PROCS 2
 )
